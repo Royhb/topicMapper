@@ -1,35 +1,43 @@
 /**
- * topicMapper
+ * TopicMapper
  */
-var _       = require('lodash');
-var argv    = require('minimist')(process.argv.slice(2));
-var colors  = require('colors');
-var fs      = require('fs');
-var path    = require('path');
-var sprintf = require('sprintf-js').sprintf;
-var uf      = require('util').format;
+var _           = require('lodash');
+var argv        = require('minimist')(process.argv.slice(2));
+var colors      = require('colors');
+var lstatSync   = require('fs').lstatSync;
+var path        = require('path');
+var readdirSync = require('fs').readdirSync;
+var readFileSync= require('fs').readFileSync;
+var sprintf     = require('sprintf-js').sprintf;
+var uf          = require('util').format;
+
+var startDir = argv.D || argv.dir || '.';
+var jsonOut = argv.j || argv.json || false;
+var isDebug = argv.d || argv.debug || false;
 
 var Mapper = function () {
     this.ignoreFiles = ['.', '..'];
     this.topicMap = {};
-    this.fileMap = {test: {topics_in:[], topics_out: []}};
+    this.fileMap = {test: {topics_in: [], topics_out: []}};
 };
+
 
 Mapper.prototype = {
     processDir: function (dir) {
         var self = this;
-        if (!jsonOut && isDebug) console.log(colors.green(uf('%s', dir)));
-        var files = fs.readdirSync(dir);
+        if (!jsonOut && isDebug) { console.log(colors.green(uf('%s', dir))); }
+        var files = readdirSync(dir);
         files.forEach(function (file) {
             if (file) {
+                var isDir = false;
                 var fullPath = dir + '/' + file;
                 if (path.extname(file) === '.json' && file.indexOf('prototype') === -1) {
-                    self.processFile(fullPath)
+                    self.processFile(fullPath);
                 } else if (self.ignoreFiles.indexOf(file) === -1) {
                     try {
-                        var isDir = fs.lstatSync(fullPath).isDirectory()
+                        isDir = lstatSync(fullPath).isDirectory();
                     } catch (err) {
-                        if (isDebug) console.log(colors.red(uf('    Skipping %s: %s', fullPath, err.message)))
+                        if (isDebug) { console.log(colors.red(uf('    Skipping %s: %s', fullPath, err.message))); }
                     }
 
                     if (isDir) {
@@ -37,18 +45,18 @@ Mapper.prototype = {
                     }
                 }
             }
-        })
+        });
     },
 
     processFile: function (fullPath) {
-        if (isDebug) console.log(colors.cyan(uf('    Processing: %s', path.basename(fullPath))));
+        if (isDebug) { console.log(colors.cyan(uf('    Processing: %s', path.basename(fullPath)))); }
         var self = this;
 
-        var src = fs.readFileSync(fullPath);
+        var src = readFileSync(fullPath);
         try {
             var args = JSON.parse(src.toString('utf8'));
         } catch (err) {
-            if (isDebug) console.log(colors.red(uf('    ERROR: parsing file %s', fullPath)));
+            if (isDebug) { console.log(colors.red(uf('    ERROR: parsing file %s', fullPath))); }
         }
         if (args) {
             self.processArgs(args, path.basename(fullPath));
@@ -59,20 +67,20 @@ Mapper.prototype = {
         var self = this;
 
         _.forEach(args, function (val, key, args) {
-            _.forEach(args[key], function (itemVal, itemKey /*, item */) {
-                if (itemKey.indexOf && itemKey.indexOf('topic_in') >=0) {
-                    self.addToFileMap.call(self, configName, itemVal.value, 'in')
+            _.forEach(args[key], function (itemVal, itemKey) {
+                if (itemKey.indexOf && itemKey.indexOf('topic_in') >= 0) {
+                    self.addToFileMap(configName, itemVal.value, 'in');
                 }
-                if (itemKey.indexOf && itemKey.indexOf('topic_out') >=0) {
-                    self.addToFileMap.call(self, configName, itemVal.value, 'out')
+                if (itemKey.indexOf && itemKey.indexOf('topic_out') >= 0) {
+                    self.addToFileMap(configName, itemVal.value, 'out');
                 }
-            })
-        })
+            });
+        });
     },
 
     addToFileMap: function (fileName, topic, inOrOut) {
-        if ( ! this.fileMap[fileName]) { this.fileMap[fileName] = {topics_in: [], topics_out: []};}
-        if ( ! this.topicMap[topic])   { this.topicMap[topic] =   {from: [],      to: []        };}
+        if (!this.fileMap[fileName]) { this.fileMap[fileName] = {topics_in: [], topics_out: []}; }
+        if (!this.topicMap[topic]) { this.topicMap[topic] = {from: [], to: [] }; }
         if (inOrOut === 'in') {
             this.fileMap[fileName].topics_in.push(topic);
             this.topicMap[topic].from.push(fileName);
@@ -89,7 +97,7 @@ Mapper.prototype = {
 
     sendConsoleOut: function () {
         console.log(colors.magenta('\nProcessing complete'));
-        _.forEach(this.fileMap, function (val, key /*, context */) {
+        _.forEach(this.fileMap, function (val, key) {
             if (val.topics_in || val.topics_out) {
                 console.log(colors.cyan(sprintf('Config file: %s', key)));
                 if (val.topics_in && val.topics_in.length > 0) {
@@ -104,7 +112,7 @@ Mapper.prototype = {
             }
         });
 
-        _.forEach(this.topicMap, function (val, key /*, context */) {
+        _.forEach(this.topicMap, function (val, key) {
             if (val.from || val.to) {
                 console.log(colors.cyan(sprintf('Topic: %s', key)));
                 if (val.from && val.from.length > 0) {
@@ -122,11 +130,8 @@ Mapper.prototype = {
 
     }
 };
-var startDir = argv['D'] || argv['dir'] || '.';
-var jsonOut = argv['j'] || argv['json'] || false;
-var isDebug = argv['d'] || argv['debug'] || false;
 
-var mapper = new Mapper('/home/sop/switch/config');
+var mapper = new Mapper();
 
 mapper.processDir(startDir);
 
