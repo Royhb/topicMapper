@@ -18,7 +18,7 @@ var Mapper = function () {
 Mapper.prototype = {
     processDir: function (dir) {
         var self = this;
-        if (!jsonOut) console.log(colors.green(uf('%s', dir)));
+        if (!jsonOut && isDebug) console.log(colors.green(uf('%s', dir)));
         var files = fs.readdirSync(dir);
         files.forEach(function (file) {
             if (file) {
@@ -29,7 +29,7 @@ Mapper.prototype = {
                     try {
                         var isDir = fs.lstatSync(fullPath).isDirectory()
                     } catch (err) {
-                        console.log(colors.red(uf('    Skipping %s: %s', fullPath, err.message)))
+                        if (isDebug) console.log(colors.red(uf('    Skipping %s: %s', fullPath, err.message)))
                     }
 
                     if (isDir) {
@@ -41,14 +41,14 @@ Mapper.prototype = {
     },
 
     processFile: function (fullPath) {
-        console.log(colors.cyan(uf('    Processing: %s', path.basename(fullPath))));
+        if (isDebug) console.log(colors.cyan(uf('    Processing: %s', path.basename(fullPath))));
         var self = this;
 
         var src = fs.readFileSync(fullPath);
         try {
             var args = JSON.parse(src.toString('utf8'));
         } catch (err) {
-            console.log(colors.red(uf('    ERROR: parsing file %s', fullPath)));
+            if (isDebug) console.log(colors.red(uf('    ERROR: parsing file %s', fullPath)));
         }
         if (args) {
             self.processArgs(args, path.basename(fullPath));
@@ -80,48 +80,58 @@ Mapper.prototype = {
             this.fileMap[fileName].topics_out.push(topic);
             this.topicMap[topic].to.push(fileName);
         }
+    },
+
+    sendJsonOutput: function () {
+        var outJson = {fileMap: this.fileMap, topicMap: this.topicMap};
+        console.log(JSON.stringify(outJson, null, 2));
+    },
+
+    sendConsoleOut: function () {
+        console.log(colors.magenta('\nProcessing complete'));
+        _.forEach(this.fileMap, function (val, key /*, context */) {
+            if (val.topics_in || val.topics_out) {
+                console.log(colors.cyan(sprintf('Config file: %s', key)));
+                if (val.topics_in && val.topics_in.length > 0) {
+                    console.log(colors.green('    Receives from topic(s):'));
+                    console.log(colors.green(sprintf('        %s', val.topics_in.splice(', '))));
+                }
+                if (val.topics_out && val.topics_out.length > 0) {
+                    console.log(colors.magenta('    Sends to topics(s):'));
+                    console.log(colors.magenta(sprintf('        %s', val.topics_out.splice(', '))));
+                }
+                console.log(' ');
+            }
+        });
+
+        _.forEach(this.topicMap, function (val, key /*, context */) {
+            if (val.from || val.to) {
+                console.log(colors.cyan(sprintf('Topic: %s', key)));
+                if (val.from && val.from.length > 0) {
+                    console.log(colors.green('    Entries created by:'));
+                    console.log(colors.green(sprintf('        %s', val.from.splice(', '))));
+                }
+                if (val.to && val.to.length > 0) {
+                    console.log(colors.magenta('    Entries used by:'));
+                    console.log(colors.magenta(sprintf('        %s', val.to.splice(', '))));
+                }
+                console.log(' ');
+            }
+        });
+
+
     }
 };
-var startDir = argv['D'] || argv['dir'] || '/home/sop/switch/config';
+var startDir = argv['D'] || argv['dir'] || '.';
 var jsonOut = argv['j'] || argv['json'] || false;
+var isDebug = argv['d'] || argv['debug'] || false;
 
 var mapper = new Mapper('/home/sop/switch/config');
+
 mapper.processDir(startDir);
 
-if (!jsonOut) console.log(colors.magenta(uf('\nProcessing complete, %d topic_in / topic_out entries found\n')));
-
 if (jsonOut) {
-    var outJson = {fileMap: mapper.fileMap, topicMap: mapper.topicMap};
-    console.log(JSON.stringify(outJson, null, 2));
+    mapper.sendJsonOutput();
 } else {
-    _.forEach(mapper.fileMap, function (val, key /*, context */) {
-        if (val.topics_in || val.topics_out) {
-            console.log(colors.cyan(sprintf('Config file: %s', key)));
-            if (val.topics_in && val.topics_in.length > 0) {
-                console.log(colors.green('    Receives from topic(s):'));
-                console.log(colors.green(sprintf('        %s', val.topics_in.splice(', '))));
-            }
-            if (val.topics_out && val.topics_out.length > 0) {
-                console.log(colors.magenta('    Sends to topics(s):'));
-                console.log(colors.magenta(sprintf('        %s', val.topics_out.splice(', '))));
-            }
-            console.log(' ');
-        }
-    });
-
-    _.forEach(mapper.topicMap, function (val, key /*, context */) {
-        if (val.from || val.to) {
-            console.log(colors.cyan(sprintf('Topic: %s', key)));
-            if (val.from && val.from.length > 0) {
-                console.log(colors.green('    Entries created by:'));
-                console.log(colors.green(sprintf('        %s', val.from.splice(', '))));
-            }
-            if (val.to && val.to.length > 0) {
-                console.log(colors.magenta('    Entries used by:'));
-                console.log(colors.magenta(sprintf('        %s', val.to.splice(', '))));
-            }
-            console.log(' ');
-        }
-    });
-
+    mapper.sendConsoleOut();
 }
